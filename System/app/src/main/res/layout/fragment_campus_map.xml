@@ -134,12 +134,68 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- Arrival Notification Banner -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardArrivalBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/cardRouteBanner"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#ECFDF5"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="4dp"
+        app:strokeColor="#10B981"
+        app:strokeWidth="1.5dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎉"
+                android:textSize="22sp" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvArrivalTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="You Have Arrived!"
+                    android:textColor="#065F46"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvArrivalSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="Welcome to Building"
+                    android:textColor="#047857"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
     <!-- WebView for Leaflet Map -->
     <WebView
         android:id="@+id/webViewMap"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/cardRouteBanner" />
+        android:layout_below="@id/cardArrivalBanner" />
 
     <!-- FAB to center on user location -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton

@@ -14,10 +14,12 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.oopproject.databinding.ActivitySignInPageBinding
 import com.example.oopproject.databinding.DialogForgotBinding
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class SignInPage : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
     private lateinit var binding: ActivitySignInPageBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,6 +28,7 @@ class SignInPage : AppCompatActivity() {
 
         binding = ActivitySignInPageBinding.inflate(layoutInflater)
         auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
         setContentView(binding.root)
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
@@ -76,10 +79,30 @@ class SignInPage : AppCompatActivity() {
 
                     if (task.isSuccessful) {
                         Toast.makeText(this, "Signed in successfully!", Toast.LENGTH_SHORT).show()
+                        val uid = auth.currentUser?.uid
+                        if (uid != null) {
+                            db.collection("users").document(uid).get()
+                                .addOnSuccessListener { doc ->
+                                    val name = doc.getString("fullName") ?: doc.getString("name") ?: ""
+                                    val type = doc.getString("accountType") ?: "Student"
+                                    
+                                    val prefs = getSharedPreferences("user_prefs", MODE_PRIVATE)
+                                    prefs.edit()
+                                        .putString("cached_full_name", name)
+                                        .putString("cached_account_type", type)
+                                        .apply()
 
-                        // Navigate to Home
-                        startActivity(Intent(this, HomePage::class.java))
-                        finish()
+                                    startActivity(Intent(this, HomePage::class.java))
+                                    finish()
+                                }
+                                .addOnFailureListener {
+                                    startActivity(Intent(this, HomePage::class.java))
+                                    finish()
+                                }
+                        } else {
+                            startActivity(Intent(this, HomePage::class.java))
+                            finish()
+                        }
                     } else {
                         Toast.makeText(this, "Sign in failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                     }

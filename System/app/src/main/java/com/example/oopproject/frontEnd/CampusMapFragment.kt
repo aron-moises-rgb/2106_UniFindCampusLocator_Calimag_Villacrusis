@@ -6,10 +6,12 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -98,6 +100,29 @@ class CampusMapFragment : Fragment() {
         checkLocationPermissionAndStart()
     }
 
+    private val arrivalHandler = Handler(Looper.getMainLooper())
+
+    inner class WebAppInterface {
+        @JavascriptInterface
+        fun onBuildingArrived(buildingName: String) {
+            requireActivity().runOnUiThread {
+                if (_binding != null) {
+                    binding.cardRouteBanner.visibility = View.GONE
+                    binding.tvArrivalSubtitle.text = "Welcome to $buildingName"
+                    binding.cardArrivalBanner.visibility = View.VISIBLE
+
+                    arrivalHandler.removeCallbacksAndMessages(null)
+                    arrivalHandler.postDelayed({
+                        if (_binding != null) {
+                            binding.cardArrivalBanner.visibility = View.GONE
+                        }
+                    }, 3000)
+                }
+            }
+        }
+    }
+
+    @SuppressLint("JavascriptInterface")
     private fun setupWebView() {
         val webView = binding.webViewMap
         val webSettings: WebSettings = webView.settings
@@ -106,6 +131,8 @@ class CampusMapFragment : Fragment() {
         webSettings.domStorageEnabled = true
         webSettings.loadWithOverviewMode = true
         webSettings.useWideViewPort = true
+
+        webView.addJavascriptInterface(WebAppInterface(), "AndroidInterface")
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -182,7 +209,20 @@ class CampusMapFragment : Fragment() {
                     let userMarker = null;
                     let userAccuracyCircle = null;
                     let activeRoutePolyline = null;
+                    let activeTargetBuilding = null;
                     const buildingMarkers = [];
+                    const buildingPolygons = [];
+
+                    function isPointInPolygon(lat, lng, polyCoords) {
+                        let inside = false;
+                        for (let i = 0, j = polyCoords.length - 1; i < polyCoords.length; j = i++) {
+                            const xi = polyCoords[i][0], yi = polyCoords[i][1];
+                            const xj = polyCoords[j][0], yj = polyCoords[j][1];
+                            const intersect = ((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+                            if (intersect) inside = !inside;
+                        }
+                        return inside;
+                    }
 
                     function loadKmlData(kmlString) {
                         try {
@@ -255,6 +295,7 @@ class CampusMapFragment : Fragment() {
                                                 const polygon = L.polygon(latLngs, polyOptions).addTo(map);
                                                 if (!isCampusArea) {
                                                     polygon.bindPopup('<div class="map-popup"><h3>📍 ' + name + '</h3></div>');
+                                                    buildingPolygons.push({ name: name, latLngs: latLngs, bounds: polygon.getBounds() });
                                                 }
                                             }
                                         }
@@ -462,61 +503,92 @@ class CampusMapFragment : Fragment() {
 
                     function focusBuilding(targetName) {
                         if (!targetName) return;
+                        activeTargetBuilding = targetName;
+                        updateRouteForTarget(targetName);
+                    }
+
+                    function updateRouteForTarget(targetName) {
+                        if (!targetName) return;
                         const cleanTarget = targetName.toLowerCase().replace("building", "").trim();
 
                         const mainEntrancePos = [14.0676983, 120.6275044];
                         const secondEntrancePos = [14.0677514, 120.6259536];
-                        let useSecondEntrance = false;
 
-                        if (userMarker) {
-                            const uLat = userMarker.getLatLng().lat;
-                            const uLng = userMarker.getLatLng().lng;
-                            const dMain = getDistanceInMeters(uLat, uLng, mainEntrancePos[0], mainEntrancePos[1]);
-                            const dSecond = getDistanceInMeters(uLat, uLng, secondEntrancePos[0], secondEntrancePos[1]);
+                        const userPos = userMarker ? [userMarker.getLatLng().lat, userMarker.getLatLng().lng] : null;
+
+                        let useSecondEntrance = false;
+                        if (userPos) {
+                            const dMain = getDistanceInMeters(userPos[0], userPos[1], mainEntrancePos[0], mainEntrancePos[1]);
+                            const dSecond = getDistanceInMeters(userPos[0], userPos[1], secondEntrancePos[0], secondEntrancePos[1]);
                             useSecondEntrance = dSecond < dMain;
                         }
 
                         const activeMap = useSecondEntrance ? buildingPathways2ndEntrance : buildingPathways;
-                        let routeCoords = null;
+                        let fullPath = null;
 
                         for (let key in activeMap) {
                             if (cleanTarget.includes(key) || key.includes(cleanTarget)) {
-                                routeCoords = Array.from(activeMap[key]);
+                                fullPath = Array.from(activeMap[key]);
                                 break;
                             }
                         }
 
-                        for (let i = 0; i < buildingMarkers.length; i++) {
-                            const item = buildingMarkers[i];
-                            if (item.name.toLowerCase().includes(cleanTarget) || cleanTarget.includes(item.name.toLowerCase())) {
-                                if (!routeCoords) {
-                                    const startLatLng = userMarker ? [userMarker.getLatLng().lat, userMarker.getLatLng().lng] : [14.0676983, 120.6275044];
-                                    routeCoords = [startLatLng, item.latLng];
-                                } else if (userMarker) {
-                                    routeCoords.unshift([userMarker.getLatLng().lat, userMarker.getLatLng().lng]);
+                        let routeCoords = [];
+
+                        if (fullPath && fullPath.length > 0) {
+                            if (userPos) {
+                                // Find closest point on path to current user position
+                                let minIndex = 0;
+                                let minDistance = Infinity;
+                                for (let i = 0; i < fullPath.length; i++) {
+                                    const dist = getDistanceInMeters(userPos[0], userPos[1], fullPath[i][0], fullPath[i][1]);
+                                    if (dist < minDistance) {
+                                        minDistance = dist;
+                                        minIndex = i;
+                                    }
                                 }
 
-                                if (activeRoutePolyline) {
-                                    map.removeLayer(activeRoutePolyline);
+                                // Route starts directly from user position -> closest path point -> remaining path to building
+                                routeCoords.push(userPos);
+                                for (let i = minIndex; i < fullPath.length; i++) {
+                                    routeCoords.push(fullPath[i]);
                                 }
-                                activeRoutePolyline = L.polyline(routeCoords, {
-                                    color: '#2563EB',
-                                    weight: 6,
-                                    opacity: 0.95,
-                                    dashArray: '8, 8'
-                                }).addTo(map);
-                                map.fitBounds(activeRoutePolyline.getBounds(), { padding: [50, 50] });
-                                break;
+                            } else {
+                                routeCoords = fullPath;
                             }
+                        } else {
+                            // Fallback if no matching pathway: draw direct line from user or entrance to building
+                            for (let i = 0; i < buildingMarkers.length; i++) {
+                                const item = buildingMarkers[i];
+                                if (item.name.toLowerCase().includes(cleanTarget) || cleanTarget.includes(item.name.toLowerCase())) {
+                                    const start = userPos || mainEntrancePos;
+                                    routeCoords = [start, item.latLng];
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (routeCoords.length > 0) {
+                            if (activeRoutePolyline) {
+                                map.removeLayer(activeRoutePolyline);
+                            }
+                            activeRoutePolyline = L.polyline(routeCoords, {
+                                color: '#2563EB',
+                                weight: 6,
+                                opacity: 0.95,
+                                dashArray: '8, 8'
+                            }).addTo(map);
+                            map.fitBounds(activeRoutePolyline.getBounds(), { padding: [50, 50] });
                         }
                     }
 
                     function clearRoute() {
+                        activeTargetBuilding = null;
                         if (activeRoutePolyline) {
                             map.removeLayer(activeRoutePolyline);
                             activeRoutePolyline = null;
                         }
-                        map.setView([14.06679, 120.62613], 18);
+                        // Do not adjust or pan map camera on arrival
                     }
 
                     function updateUserLocation(lat, lng) {
@@ -544,6 +616,34 @@ class CampusMapFragment : Fragment() {
                             }).addTo(map);
                         } else {
                             userAccuracyCircle.setLatLng(latLng);
+                        }
+
+                        if (activeTargetBuilding) {
+                            const cleanTarget = activeTargetBuilding.toLowerCase().replace("building", "").trim();
+
+                            let isInsideArea = false;
+
+                            // Strict Ray-Casting Polygon Interior Check ONLY (No Bounding Box)
+                            for (let i = 0; i < buildingPolygons.length; i++) {
+                                const bPoly = buildingPolygons[i];
+                                if (bPoly.name.toLowerCase().includes(cleanTarget) || cleanTarget.includes(bPoly.name.toLowerCase())) {
+                                    if (isPointInPolygon(lat, lng, bPoly.latLngs)) {
+                                        isInsideArea = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (isInsideArea) {
+                                const currentBldgName = activeTargetBuilding || "Building";
+                                clearRoute();
+                                if (window.AndroidInterface && window.AndroidInterface.onBuildingArrived) {
+                                    window.AndroidInterface.onBuildingArrived(currentBldgName);
+                                }
+                                return;
+                            }
+
+                            updateRouteForTarget(activeTargetBuilding);
                         }
                     }
                 </script>

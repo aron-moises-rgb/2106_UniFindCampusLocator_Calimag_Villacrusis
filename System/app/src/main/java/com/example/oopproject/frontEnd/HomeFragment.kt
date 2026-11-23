@@ -1,5 +1,6 @@
 package com.example.oopproject.frontEnd
 
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -72,9 +73,31 @@ class HomeFragment : Fragment() {
 
         auth = FirebaseAuth.getInstance()
 
-        // Hide shortcuts by default until role is checked from Firestore
-        binding.btnAdminPortal.visibility = View.GONE
-        binding.btnTeacherSchedulePortal.visibility = View.GONE
+        // Instant 0ms Cache Pre-load
+        val prefs = requireContext().getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val cachedType = prefs.getString("cached_account_type", "") ?: ""
+        val cachedName = prefs.getString("cached_full_name", "") ?: ""
+
+        if (cachedType.isNotEmpty()) {
+            currentUserRole = cachedType
+            binding.tvRoleBadge.text = cachedType.uppercase()
+            binding.tvUserName.text = if (cachedName.isNotEmpty()) "Welcome, $cachedName!" else "Welcome!"
+
+            if (cachedType.equals("Admin", ignoreCase = true)) {
+                binding.btnAdminPortal.visibility = View.VISIBLE
+            } else {
+                binding.btnAdminPortal.visibility = View.GONE
+            }
+
+            if (cachedType.equals("Teacher", ignoreCase = true) || cachedType.equals("Faculty", ignoreCase = true)) {
+                binding.btnTeacherSchedulePortal.visibility = View.VISIBLE
+            } else {
+                binding.btnTeacherSchedulePortal.visibility = View.GONE
+            }
+        } else {
+            binding.btnAdminPortal.visibility = View.GONE
+            binding.btnTeacherSchedulePortal.visibility = View.GONE
+        }
 
         loadUserProfile()
         loadLiveCampusStats()
@@ -119,6 +142,9 @@ class HomeFragment : Fragment() {
 
                     binding.tvUserName.text = if (rawName.isNotEmpty()) "Welcome, $rawName!" else "Welcome!"
                     binding.tvRoleBadge.text = accountType.uppercase()
+
+                    val p = requireContext().getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                    p.edit().putString("cached_full_name", rawName).putString("cached_account_type", accountType).apply()
 
                     // Strict Role Access: Display cards based on user role
                     if (accountType.equals("Admin", ignoreCase = true)) {

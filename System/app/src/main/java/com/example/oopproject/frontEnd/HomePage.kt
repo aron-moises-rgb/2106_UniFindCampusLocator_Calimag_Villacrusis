@@ -79,13 +79,26 @@ class HomePage : AppCompatActivity() {
 
     private fun checkUserRole() {
         val user = auth.currentUser ?: return
+
+        val prefs = getSharedPreferences("user_prefs", MODE_PRIVATE)
+        val cachedType = prefs.getString("cached_account_type", "") ?: ""
+
+        val adminItem = binding.bottomNavigation.menu.findItem(R.id.nav_admin)
+        val teacherItem = binding.bottomNavigation.menu.findItem(R.id.nav_teacher_schedule)
+
+        // 0ms Instant Cache Pre-load for Bottom Navigation
+        if (cachedType.isNotEmpty()) {
+            adminItem?.isVisible = cachedType.equals("Admin", ignoreCase = true)
+            teacherItem?.isVisible = cachedType.equals("Teacher", ignoreCase = true) || cachedType.equals("Faculty", ignoreCase = true)
+        }
+
+        // Background Firestore Verification
         db.collection("users")
             .document(user.uid)
             .get()
             .addOnSuccessListener { document ->
                 val accountType = document.getString("accountType") ?: "Student"
-                val adminItem = binding.bottomNavigation.menu.findItem(R.id.nav_admin)
-                val teacherItem = binding.bottomNavigation.menu.findItem(R.id.nav_teacher_schedule)
+                prefs.edit().putString("cached_account_type", accountType).apply()
 
                 adminItem?.isVisible = accountType.equals("Admin", ignoreCase = true)
                 teacherItem?.isVisible = accountType.equals("Teacher", ignoreCase = true) || accountType.equals("Faculty", ignoreCase = true)
